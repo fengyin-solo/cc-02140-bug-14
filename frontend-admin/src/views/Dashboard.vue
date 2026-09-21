@@ -111,7 +111,21 @@
             </h3>
           </div>
           <div class="card-body category-body">
-            <div class="category-list">
+            <div v-if="categoryStore.status === 'loading'" class="category-state">
+              <a-spin tip="分类统计加载中..." />
+            </div>
+            <div v-else-if="categoryStore.status === 'error'" class="category-state">
+              <a-empty :image="simpleImage" description="分类统计加载失败">
+                <a-button type="primary" size="small" @click="categoryStore.fetchCategories(true)">重试</a-button>
+              </a-empty>
+            </div>
+            <a-empty
+              v-else-if="topCategories.length === 0"
+              :image="simpleImage"
+              description="暂无分类数据"
+              class="category-state"
+            />
+            <div v-else class="category-list">
               <div
                 v-for="(cat, index) in topCategories"
                 :key="cat.id"
@@ -123,14 +137,14 @@
                   <span class="category-name">{{ cat.name }}</span>
                 </div>
                 <div class="category-right">
-                  <span class="category-count animate-number">{{ cat.bookCount }}</span>
+                  <span class="category-count animate-number">{{ categoryStore.getBookCount(cat.id) }}</span>
                   <span class="category-unit">本</span>
                 </div>
                 <div class="category-progress">
                   <div
                     class="category-progress-bar"
                     :style="{
-                      width: `${(cat.bookCount / maxBookCount) * 100}%`,
+                      width: `${(categoryStore.getBookCount(cat.id) / maxBookCount) * 100}%`,
                       backgroundColor: getProgressColor(cat.id)
                     }"
                   ></div>
@@ -166,7 +180,9 @@
               <h4 class="book-title">{{ book.title }}</h4>
               <p class="book-author">{{ book.author }}</p>
               <div class="book-meta">
-                <a-tag color="blue" class="category-tag">{{ book.categoryName }}</a-tag>
+                <a-tag :color="categoryStore.getCategoryById(book.categoryId) ? 'blue' : 'default'" class="category-tag">
+                  {{ categoryStore.getCategoryById(book.categoryId)?.name || '未分类' }}
+                </a-tag>
                 <span class="book-available">
                   <span class="stock-icon">📚</span>
                   {{ book.available }}/{{ book.total }}
@@ -182,6 +198,7 @@
 
 <script setup>
 import { computed } from 'vue'
+import { Empty } from 'ant-design-vue'
 import {
   BookOutlined,
   UserOutlined,
@@ -196,6 +213,8 @@ import { useBookStore } from '@/stores/book'
 import { useReaderStore } from '@/stores/reader'
 import { useBorrowStore } from '@/stores/borrow'
 import { useCategoryStore } from '@/stores/category'
+
+const simpleImage = Empty.PRESENTED_IMAGE_SIMPLE
 
 const bookStore = useBookStore()
 const readerStore = useReaderStore()
@@ -213,7 +232,7 @@ const topCategories = computed(() => {
 })
 
 const maxBookCount = computed(() => {
-  const counts = categoryStore.categories.map(c => c.bookCount)
+  const counts = categoryStore.categories.map(c => categoryStore.getBookCount(c.id))
   return Math.max(...counts, 1)
 })
 
@@ -552,6 +571,14 @@ function getProgressColor(id) {
 // 分类列表样式
 .category-body {
   padding: 8px 20px !important;
+}
+
+.category-state {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 240px;
+  text-align: center;
 }
 
 .category-list {

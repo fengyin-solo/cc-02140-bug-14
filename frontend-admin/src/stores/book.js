@@ -13,6 +13,7 @@ import xlxCover from '@/views/img/xlx.webp'
 import sxCover from '@/views/img/sx.webp'
 
 const STORAGE_KEY = 'library_books'
+const LOAD_DELAY = 400
 
 // 默认书籍封面图片（使用本地图片）
 const DEFAULT_COVERS = [
@@ -46,27 +47,68 @@ function fixBookCovers(books) {
 }
 
 export const useBookStore = defineStore('book', () => {
-  // 从 localStorage 读取或使用初始数据
-  const loadBooks = () => {
-    const stored = localStorage.getItem(STORAGE_KEY)
-    if (stored) {
-      try {
-        const parsedBooks = JSON.parse(stored)
-        // 修复旧数据中的图片链接
-        return fixBookCovers(parsedBooks)
-      } catch (e) {
-        console.error('Failed to parse stored books:', e)
-      }
-    }
-    return [...initialBooks]
+  const books = ref([])
+  // idle / loading / success / error —— 空数据、加载中、加载失败需区分展示
+  const status = ref('idle')
+  const error = ref('')
+
+  let loadPromise = null
+
+  // 模拟异步数据加载（失败时保留现场，由页面触发重试）
+  function loadFromStorage() {
+    return new Promise((resolve, reject) => {
+      setTimeout(() => {
+        try {
+          const stored = localStorage.getItem(STORAGE_KEY)
+          if (stored) {
+            const parsedBooks = JSON.parse(stored)
+            if (!Array.isArray(parsedBooks)) throw new Error('图书数据格式错误')
+            // 修复旧数据中的图片链接
+            resolve(fixBookCovers(parsedBooks))
+          } else {
+            resolve([...initialBooks])
+          }
+        } catch (e) {
+          reject(e)
+        }
+      }, LOAD_DELAY)
+    })
   }
 
-  const books = ref(loadBooks())
-  const loading = ref(false)
+  async function fetchBooks(force = false) {
+    if (!force && (status.value === 'loading' || status.value === 'success')) {
+      return loadPromise
+    }
 
-  // 监听变化并保存到 localStorage
+    status.value = 'loading'
+    error.value = ''
+
+    loadPromise = loadFromStorage()
+      .then(data => {
+        books.value = data
+        status.value = 'success'
+        return data
+      })
+      .catch(e => {
+        // 加载失败不清空既有数据，页面可从错误态点击重试
+        error.value = e?.message || '图书数据加载失败'
+        status.value = 'error'
+        console.error('Failed to load books:', e)
+        // 吞掉 rejection，由 status/error 驱动页面反馈；retry 时重新拉取
+        return undefined
+      })
+
+    return loadPromise
+  }
+
+  // 首次进入即加载
+  fetchBooks()
+
+  // 仅在数据正常加载后持久化，避免失败重试期间用空数据覆盖本地记录
   watch(books, (newBooks) => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(newBooks))
+    if (status.value === 'success') {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(newBooks))
+    }
   }, { deep: true })
 
   const totalBooks = computed(() => books.value.length)
@@ -121,9 +163,11 @@ export const useBookStore = defineStore('book', () => {
 
   return {
     books,
-    loading,
+    status,
+    error,
     totalBooks,
     totalAvailable,
+    fetchBooks,
     getBookById,
     addBook,
     updateBook,

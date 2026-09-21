@@ -62,27 +62,52 @@
       </transition>
     </div>
 
+    <!-- 加载失败：可从页面重试 -->
+    <a-result
+      v-if="bookStore.status === 'error'"
+      status="error"
+      title="图书数据加载失败"
+      :sub-title="bookStore.error"
+      class="state-result"
+    >
+      <template #extra>
+        <a-button type="primary" :loading="bookStore.status === 'loading'" @click="retryLoad">
+          <ReloadOutlined /> 重新加载
+        </a-button>
+      </template>
+    </a-result>
+
     <!-- 图书表格 -->
-    <div :class="['table-container', 'animate-fade-in', { 'table-loading': tableAnimating }]">
+    <div v-else :class="['table-container', 'animate-fade-in', { 'table-loading': tableAnimating }]">
       <!-- 加载动画遮罩 -->
       <transition name="fade">
-        <div v-if="tableAnimating" class="table-loading-overlay">
+        <div v-if="tableAnimating || bookStore.status === 'loading'" class="table-loading-overlay">
           <div class="loading-spinner">
             <div class="spinner-ring"></div>
-            <span>搜索中...</span>
+            <span>{{ bookStore.status === 'loading' ? '加载中...' : '搜索中...' }}</span>
           </div>
         </div>
       </transition>
-      
+
       <a-table
         :columns="columns"
         :data-source="filteredBooks"
-        :loading="loading"
+        :loading="loading || bookStore.status === 'loading'"
         row-key="id"
         :pagination="{ pageSize: 10, showTotal: total => `共 ${total} 条` }"
         :row-class-name="getRowClassName"
         @change="handleTableChange"
       >
+        <!-- 空数据 / 无匹配结果需区分 -->
+        <template #emptyText>
+          <a-empty
+            v-if="bookStore.books.length === 0"
+            description="暂无图书数据，请点击右上角新增图书"
+          />
+          <a-empty v-else description="没有符合筛选条件的图书">
+            <a-button type="primary" @click="clearFilters">清除筛选</a-button>
+          </a-empty>
+        </template>
         <template #bodyCell="{ column, record, index }">
           <template v-if="column.key === 'book'">
             <div class="book-cell">
@@ -96,7 +121,10 @@
             </div>
           </template>
           <template v-else-if="column.key === 'category'">
-            <a-tag color="blue" class="category-tag">{{ record.categoryName }}</a-tag>
+            <!-- 以分类表实时归属为准，避免分类改名/删除后展示旧数据 -->
+            <a-tag :color="isOrphanBook(record) ? 'default' : 'blue'" class="category-tag">
+              {{ getCategoryName(record) }}
+            </a-tag>
           </template>
           <template v-else-if="column.key === 'stock'">
             <div class="stock-cell">
@@ -165,6 +193,14 @@
         </a-form-item>
         <a-form-item label="分类" name="categoryId">
           <a-select v-model:value="formState.categoryId" placeholder="请选择分类">
+            <!-- 旧数据中分类已被删除时，给出明确占位而非空白选项 -->
+            <a-select-option
+              v-if="formOrphanCategory"
+              :value="formState.categoryId"
+              disabled
+            >
+              原分类已删除（id: {{ formState.categoryId }}），请重新选择
+            </a-select-option>
             <a-select-option
               v-for="cat in categoryStore.categories"
               :key="cat.id"
@@ -206,7 +242,7 @@
 <script setup>
 import { ref, reactive, computed, nextTick, watch } from 'vue'
 import { message } from 'ant-design-vue'
-import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, EyeOutlined } from '@ant-design/icons-vue'
+import { PlusOutlined, EditOutlined, DeleteOutlined, SearchOutlined, ReloadOutlined } from '@ant-design/icons-vue'
 import { useBookStore } from '@/stores/book'
 import { useCategoryStore } from '@/stores/category'
 
@@ -272,6 +308,36 @@ const filteredBooks = computed(() => {
 
   return result
 })
+
+// 加载失败后从页面重试
+function retryLoad() {
+  bookStore.fetchBooks(true)
+}
+
+// 分类名以分类表实时数据为准；分类已不存在（历史脏数据）时给出明确占位
+function getCategoryName(record) {
+  return categoryStore.getCategoryById(record.categoryId)?.name || '未分类（分类已删除）'
+}
+
+function isOrphanBook(record) {
+  return !categoryStore.getCategoryById(record.categoryId)
+}
+
+// 筛选中的分类被删除后，自动清除残留筛选，避免停留在“已消失分类”的空列表上
+watch(
+  () => categoryStore.categories,
+  (categories) => {
+    if (selectedCategory.value && !categories.some(cat => cat.id === selectedCategory.value)) {
+      selectedCategory.value = null
+    }
+  },
+  { deep: true }
+)
+
+// 编辑弹窗中，图书当前归属的分类已被删除（历史数据）时展示占位选项
+const formOrphanCategory = computed(() =>
+  formState.categoryId != null && !categoryStore.getCategoryById(formState.categoryId)
+)
 
 function handleSearch() {
   triggerSearchAnimation()
@@ -404,6 +470,7 @@ async function handleSubmit() {
 
     const bookData = {
       ...formState,
+      // 冗余分类名以实时分类表为准，避免分类改名后长期显示旧名称
       categoryName: category?.name || '',
       available: isEdit.value ? undefined : formState.total,
       cover: isEdit.value ? (bookStore.getBookById(editingId.value)?.cover || randomCover) : randomCover
@@ -666,11 +733,10 @@ function handleDelete(id) {
   padding: 20px;
   position: relative;
   transition: all 0.3s ease;
-  
+
   &:hover {
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
   }
-  
   &.table-loading {
     .ant-table {
       filter: blur(2px);
@@ -804,5 +870,12 @@ function handleDelete(id) {
 .low-stock {
   color: #ff4d4f;
   font-weight: 500;
+}
+
+.state-result {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-bottom: 16px;
 }
 </style>
