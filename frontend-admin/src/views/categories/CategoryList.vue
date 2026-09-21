@@ -2,80 +2,102 @@
   <div class="category-list">
     <h2 class="page-title">分类管理</h2>
 
-    <!-- 操作区域 -->
-    <div class="search-area">
-      <a-row :gutter="16" align="middle">
-        <a-col :xs="24" :sm="12" :md="8" :lg="6">
-          <a-input
-            v-model:value="searchKeyword"
-            placeholder="搜索分类名称"
-            allow-clear
-          >
-            <template #suffix>
-              <SearchOutlined style="color: rgba(0,0,0,0.45); cursor: pointer;" />
-            </template>
-          </a-input>
-        </a-col>
-        <a-col :xs="24" :sm="12" :md="16" :lg="18" style="text-align: right;">
-          <a-button type="primary" @click="showAddModal">
-            <PlusOutlined /> 新增分类
-          </a-button>
-        </a-col>
-      </a-row>
-    </div>
+    <!-- 加载失败：可在当前页面重试 -->
+    <a-result
+      v-if="categoryStore.error"
+      status="error"
+      title="分类数据加载失败"
+      :sub-title="categoryStore.error"
+      class="error-state"
+    >
+      <template #extra>
+        <a-button type="primary" :loading="categoryStore.loading" @click="handleRetry">
+          <template #icon><ReloadOutlined /></template>
+          重新加载
+        </a-button>
+      </template>
+    </a-result>
 
-    <!-- 分类卡片列表 -->
-    <a-row :gutter="[16, 16]">
-      <a-col
-        v-for="category in filteredCategories"
-        :key="category.id"
-        :xs="24"
-        :sm="12"
-        :md="8"
-        :lg="6"
-      >
-        <div class="category-card" :style="{ borderTopColor: getCategoryColor(category.id) }">
-          <div class="category-header">
-            <div class="category-icon" :style="{ backgroundColor: getCategoryColor(category.id) }">
-              <FolderOutlined />
-            </div>
-            <div class="category-actions">
-              <a-button type="text" size="small" class="action-btn edit-btn" @click="showEditModal(category)">
-                <EditOutlined />
-              </a-button>
-              <a-popconfirm
-                title="确定要删除这个分类吗？"
-                ok-text="确定"
-                cancel-text="取消"
-                @confirm="handleDelete(category.id)"
+    <a-spin :spinning="categoryStore.loading" wrapper-class-name="category-spin" tip="加载中...">
+      <!-- 操作区域 -->
+      <div v-if="!categoryStore.error" class="search-area">
+          <a-row :gutter="16" align="middle">
+            <a-col :xs="24" :sm="12" :md="8" :lg="6">
+              <a-input
+                v-model:value="searchKeyword"
+                placeholder="搜索分类名称"
+                allow-clear
               >
-                <a-button type="text" size="small" class="action-btn delete-btn">
-                  <DeleteOutlined />
-                </a-button>
-              </a-popconfirm>
-            </div>
-          </div>
-          <div class="category-body">
-            <h3 class="category-name">{{ category.name }}</h3>
-            <p class="category-code">编码: {{ category.code }}</p>
-            <p class="category-desc">{{ category.description }}</p>
-          </div>
-          <div class="category-footer">
-            <div class="book-count">
-              <BookOutlined />
-              <span>{{ category.bookCount }} 本图书</span>
-            </div>
-          </div>
+                <template #suffix>
+                  <SearchOutlined style="color: rgba(0,0,0,0.45); cursor: pointer;" />
+                </template>
+              </a-input>
+            </a-col>
+            <a-col :xs="24" :sm="12" :md="16" :lg="18" style="text-align: right;">
+              <a-button type="primary" @click="showAddModal">
+                <PlusOutlined /> 新增分类
+              </a-button>
+            </a-col>
+          </a-row>
         </div>
-      </a-col>
-    </a-row>
 
-    <!-- 空状态 -->
-    <a-empty
-      v-if="filteredCategories.length === 0"
-      description="暂无分类数据"
-      class="empty-state"
-    />
+        <!-- 分类卡片列表 -->
+        <a-row v-if="!categoryStore.error" :gutter="[16, 16]">
+          <a-col
+            v-for="category in filteredCategories"
+            :key="category.id"
+            :xs="24"
+            :sm="12"
+            :md="8"
+            :lg="6"
+          >
+            <div class="category-card" :style="{ borderTopColor: getCategoryColor(category.id) }">
+              <div class="category-header">
+                <div class="category-icon" :style="{ backgroundColor: getCategoryColor(category.id) }">
+                  <FolderOutlined />
+                </div>
+                <div class="category-actions">
+                  <a-button type="text" size="small" class="action-btn edit-btn" @click="showEditModal(category)">
+                    <EditOutlined />
+                  </a-button>
+                  <a-popconfirm
+                    title="确定要删除这个分类吗？"
+                    ok-text="确定"
+                    cancel-text="取消"
+                    @confirm="handleDelete(category.id)"
+                  >
+                    <a-button type="text" size="small" class="action-btn delete-btn">
+                      <DeleteOutlined />
+                    </a-button>
+                  </a-popconfirm>
+                </div>
+              </div>
+              <div class="category-body">
+                <h3 class="category-name">{{ category.name }}</h3>
+                <p class="category-code">编码: {{ category.code }}</p>
+                <p class="category-desc">{{ category.description }}</p>
+              </div>
+              <div class="category-footer">
+                <div class="book-count">
+                  <BookOutlined />
+                  <span>{{ category.bookCount }} 本图书</span>
+                </div>
+              </div>
+            </div>
+          </a-col>
+        </a-row>
+
+        <!-- 空状态：区分“无数据”与“搜索无匹配结果” -->
+        <a-empty
+          v-if="!categoryStore.error && filteredCategories.length === 0 && !categoryStore.loading"
+          :description="isEmptyData ? '暂无分类数据，请新增分类' : '没有找到匹配的分类'"
+          class="empty-state"
+        >
+          <a-button v-if="!isEmptyData" type="primary" @click="searchKeyword = ''">
+            清除搜索条件
+          </a-button>
+        </a-empty>
+    </a-spin>
 
     <!-- 新增/编辑弹窗 -->
     <a-modal
@@ -101,7 +123,9 @@
             v-model:value="formState.code"
             placeholder="请输入分类编码（如：WX）"
             :maxlength="4"
+            :disabled="isEdit"
           />
+          <div v-if="isEdit" class="form-tip">既有分类编码不可修改</div>
         </a-form-item>
         <a-form-item label="描述" name="description">
           <a-textarea
@@ -116,7 +140,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, nextTick } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted } from 'vue'
 import { message } from 'ant-design-vue'
 import {
   PlusOutlined,
@@ -124,11 +148,20 @@ import {
   DeleteOutlined,
   FolderOutlined,
   BookOutlined,
-  SearchOutlined
+  SearchOutlined,
+  ReloadOutlined
 } from '@ant-design/icons-vue'
 import { useCategoryStore } from '@/stores/category'
 
 const categoryStore = useCategoryStore()
+
+onMounted(() => {
+  categoryStore.loadCategories()
+})
+
+function handleRetry() {
+  categoryStore.retryLoadCategories()
+}
 
 const searchKeyword = ref('')
 const modalVisible = ref(false)
@@ -161,14 +194,17 @@ function getCategoryColor(id) {
 }
 
 const filteredCategories = computed(() => {
-  if (!searchKeyword.value) return categoryStore.categories
+  if (!searchKeyword.value) return categoryStore.categoriesWithStats
 
   const keyword = searchKeyword.value.toLowerCase()
-  return categoryStore.categories.filter(cat =>
+  return categoryStore.categoriesWithStats.filter(cat =>
     cat.name.toLowerCase().includes(keyword) ||
     cat.code.toLowerCase().includes(keyword)
   )
 })
+
+// 没有任何分类 = 空数据；有分类但搜索不命中 = 无匹配结果
+const isEmptyData = computed(() => categoryStore.categories.length === 0)
 
 function resetForm() {
   Object.assign(formState, {
@@ -232,14 +268,20 @@ async function handleSubmit() {
 }
 
 function handleDelete(id) {
-  const category = categoryStore.getCategoryById(id)
-  if (category && category.bookCount > 0) {
-    message.warning('该分类下还有图书，无法删除')
+  // 占用判断与归属检查统一在 store 内完成：
+  // 有图书归属时拒绝删除并保留全部图书原记录
+  const result = categoryStore.deleteCategory(id)
+
+  if (result.success) {
+    message.success('分类删除成功')
     return
   }
 
-  categoryStore.deleteCategory(id)
-  message.success('分类删除成功')
+  if (result.reason === 'occupied') {
+    message.warning(`该分类下还有 ${result.bookCount} 本图书，无法删除`)
+  } else {
+    message.error('分类不存在或已被删除')
+  }
 }
 </script>
 
@@ -376,5 +418,23 @@ function handleDelete(id) {
 
 .empty-state {
   margin-top: 60px;
+}
+
+.error-state {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.06);
+  margin-top: 16px;
+}
+
+.form-tip {
+  font-size: 12px;
+  color: #999;
+  line-height: 1.5;
+}
+
+:deep(.category-spin) {
+  display: block;
+  min-height: 200px;
 }
 </style>

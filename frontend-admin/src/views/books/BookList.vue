@@ -96,7 +96,9 @@
             </div>
           </template>
           <template v-else-if="column.key === 'category'">
-            <a-tag color="blue" class="category-tag">{{ record.categoryName }}</a-tag>
+            <a-tag :color="getCategoryTagColor(record.categoryId)" class="category-tag">
+              {{ getCategoryDisplayName(record) }}
+            </a-tag>
           </template>
           <template v-else-if="column.key === 'stock'">
             <div class="stock-cell">
@@ -131,6 +133,19 @@
               </a-popconfirm>
             </a-space>
           </template>
+        </template>
+        <template #emptyText>
+          <a-empty
+            :description="bookStore.books.length === 0 ? '暂无图书数据' : '没有找到匹配的图书'"
+          >
+            <a-button
+              v-if="bookStore.books.length > 0"
+              type="primary"
+              @click="clearFilters"
+            >
+              清除筛选条件
+            </a-button>
+          </a-empty>
         </template>
       </a-table>
     </div>
@@ -272,6 +287,23 @@ const filteredBooks = computed(() => {
 
   return result
 })
+
+// 筛选中的分类被删除后自动清除，不再保留已消失的分类
+watch([selectedCategory, () => categoryStore.categories], ([value]) => {
+  if (value != null && !categoryStore.getCategoryById(value)) {
+    selectedCategory.value = null
+  }
+})
+
+// 分类名称以分类数据为准：分类改名后同步生效，归属分类缺失时提示未分类
+function getCategoryDisplayName(record) {
+  const category = categoryStore.getCategoryById(record.categoryId)
+  return category?.name || '未分类'
+}
+
+function getCategoryTagColor(categoryId) {
+  return categoryStore.getCategoryById(categoryId) ? 'blue' : 'default'
+}
 
 function handleSearch() {
   triggerSearchAnimation()

@@ -166,7 +166,7 @@
               <h4 class="book-title">{{ book.title }}</h4>
               <p class="book-author">{{ book.author }}</p>
               <div class="book-meta">
-                <a-tag color="blue" class="category-tag">{{ book.categoryName }}</a-tag>
+                <a-tag color="blue" class="category-tag">{{ getCategoryDisplayName(book) }}</a-tag>
                 <span class="book-available">
                   <span class="stock-icon">📚</span>
                   {{ book.available }}/{{ book.total }}
@@ -209,11 +209,11 @@ const recentBorrows = computed(() => {
 })
 
 const topCategories = computed(() => {
-  return categoryStore.categories.slice(0, 6)
+  return categoryStore.categoriesWithStats.slice(0, 6)
 })
 
 const maxBookCount = computed(() => {
-  const counts = categoryStore.categories.map(c => c.bookCount)
+  const counts = categoryStore.categoriesWithStats.map(c => c.bookCount)
   return Math.max(...counts, 1)
 })
 
@@ -249,6 +249,11 @@ const progressColors = ['#1890ff', '#52c41a', '#faad14', '#722ed1', '#eb2f96', '
 
 function getProgressColor(id) {
   return progressColors[(id - 1) % progressColors.length]
+}
+
+// 分类名称以分类数据为准，归属分类缺失时显示未分类
+function getCategoryDisplayName(book) {
+  return categoryStore.getCategoryById(book.categoryId)?.name || '未分类'
 }
 
 </script>
